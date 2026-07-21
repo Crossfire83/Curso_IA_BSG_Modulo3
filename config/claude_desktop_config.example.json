@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "agente-financiero-clase-3": {
+      "command": "python",
+      "args": [
+        "C:/Users/raul9/OneDrive/Escritorio/Curso IA/Modulo 3/Practica 2 (Trabajo final)/mcp_agente.py"
+      ],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "PEGA_AQUI_TU_CLAVE_O_USA_UN_ENV_SEGURO",
+        "AWS_SECRET_ACCESS_KEY": "PEGA_AQUI_TU_CLAVE_O_USA_UN_ENV_SEGURO",
+        "AWS_REGION": "us-west-1",
+        "AWS_BEDROCK_MODEL": "us.anthropic.claude-sonnet-4-6",
+        "DATA_MCP_URL": "http://127.0.0.1:8000/mcp",
+        "MEMORY_WINDOW_MESSAGES": "8",
+        "API_BASE_URL": "https://monethinkapi.azurewebsites.net/api/",
+        "MCP_AGENT_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

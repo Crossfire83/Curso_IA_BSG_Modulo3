@@ -130,3 +130,103 @@ graph TB
     MCPServer -->|Tool Results| LangchainClient
     LangchainClient -->|Format Response| StreamlitApp
 ```
+
+## Instalación
+
+### 1. Crear el entorno virtual
+
+macOS / Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 2. Instalar dependencias
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configurar variables de entorno
+
+macOS / Linux:
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edita `.env`:
+
+```text
+AGENT_MCP_URL=http://127.0.0.1:8001/mcp
+DATA_MCP_URL=http://127.0.0.1:8000/mcp
+
+# Valores pueden ser "http" o "stdio" sin commillas.
+MCP_AGENT_TRANSPORT=http
+
+# Modelo para usar en AWS Bedrock
+AWS_BEDROCK_MODEL=us.anthropic.claude-sonnet-5
+
+# Claves para acceder a instancia de AWS
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=us-west-1
+
+# Cantidad de mensajes que se guardan en memoria
+MEMORY_WINDOW_MESSAGES=8
+```
+
+### 4. Comprobar el entorno
+
+```bash
+python scripts/check_environment.py
+```
+
+---
+
+## Ejecutar con Streamlit
+
+Abre tres terminales en la carpeta del proyecto, con el entorno virtual activo.
+
+Terminal 1: MCP de datos.
+
+```bash
+python mcp_datos.py
+```
+
+Terminal 2: MCP del agente por HTTP.
+
+macOS / Linux:
+
+```bash
+MCP_AGENT_TRANSPORT=http python3 mcp_agente.py
+```
+
+Windows PowerShell:
+
+```powershell
+$env:MCP_AGENT_TRANSPORT="http"
+python mcp_agente.py
+```
+
+Terminal 3: aplicación Streamlit.
+
+```bash
+streamlit run app_streamlit.py
+```
+
+Streamlit mostrará el chat, `session_id`, tamaño de ventana de memoria y traza de herramientas utilizadas. Esto permite que la clase observe qué herramienta fue elegida y qué resultados intermedios llegaron al agente.

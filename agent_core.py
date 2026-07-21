@@ -27,7 +27,7 @@ from fastmcp import Context
 
 load_dotenv(override=True)
 
-MODEL_NAME = os.getenv("AWS_BEDROCK_MODEL", "us.anthropic.claude-sonnet-5")
+MODEL_NAME = os.getenv("AWS_BEDROCK_MODEL", "us.anthropic.claude-sonnet-4-6")
 DATA_MCP_URL = os.getenv("DATA_MCP_URL", "http://127.0.0.1:8000/mcp")
 WINDOW_MESSAGES = int(os.getenv("MEMORY_WINDOW_MESSAGES", "8"))
 
