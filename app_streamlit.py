@@ -22,6 +22,9 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from mcp.shared.exceptions import McpError
 
 load_dotenv(override=True)
+
+st.set_page_config(page_title="Financial Analyst MCP", page_icon="🛒", layout="wide")
+
 AGENT_MCP_URL = os.getenv("AGENT_MCP_URL") or st.secrets.get("AGENT_MCP_URL", "http://127.0.0.1:8001/mcp")
 # Base URL of your backend authentication API
 API_BASE_URL = os.getenv("API_BASE_URL") or st.secrets.get("API_BASE_URL")
@@ -50,6 +53,25 @@ def _is_mcp_transient_error(exc: BaseException) -> bool:
             pending.extend(current.exceptions)
     return False
 
+async def get_persistent_mcp_client(headers=None):
+    """Initializes the client and stores it in the streamlit's lifecycle"""
+    if "mcp_client" not in st.session_state or st.session_state.mcp_client is None:
+        client = MultiServerMCPClient(
+            {
+                "agente": {
+                    "transport": "http",
+                    "url": AGENT_MCP_URL,
+                    "headers": headers,
+                    "timeout": 60,
+                    "sse_read_timeout": 60,
+                }
+            }
+        )
+        # Force a light first call to get the cold start lifted and connect the SSE
+        await client.get_tools()
+        st.session_state.mcp_client = client
+    return st.session_state.mcp_client
+
 async def llamar_agente(mensaje: str) -> dict:
     if st.session_state.auth_token:
         headers = {"Authorization": f"Bearer {st.session_state.auth_token}"}
@@ -59,17 +81,7 @@ async def llamar_agente(mensaje: str) -> dict:
     last_error: BaseException | None = None
     for retry in range(1, MCP_CONNECT_MAX_RETRIES + 1):
         try:
-            client = MultiServerMCPClient(
-                {
-                    "agente": {
-                        "transport": "http",
-                        "url": AGENT_MCP_URL,
-                        "headers": headers,
-                        "timeout": 60,
-                        "sse_read_timeout": 300,
-                    }
-                }
-            )
+            client = get_persistent_mcp_client(headers)
             tools = await client.get_tools()
             tool_by_name = {tool.name: tool for tool in tools}
             tool = tool_by_name["resolver_consulta_financiera"]
@@ -81,19 +93,21 @@ async def llamar_agente(mensaje: str) -> dict:
             break
         except BaseException as exc:
             last_error = exc
+            # If the damaged client caused the issue, clean it so the next retry creates a new one.
+            st.session_state.mcp_client = None 
             if retry < MCP_CONNECT_MAX_RETRIES and _is_mcp_transient_error(exc):
                 await asyncio.sleep(MCP_CONNECT_AWAIT_BASE_SECONDS * retry)
                 continue
             raise
     else:
-        # No debería alcanzarse: o hubo break, o se re-lanzó el error.
+        # Should not be hit: or there was a break, or the error was re-thrown
         raise last_error  # type: ignore[misc]
 
-    # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.
+    # The result of tool.ainvoke() is a Json string; parse it to a dict.
     if isinstance(raw_result, str):
         return json.loads(raw_result)
     if isinstance(raw_result, list):
-        # Algunos adaptadores devuelven content blocks; tomamos el texto del primero.
+        # Some adapters return content blocks; we take the text of the first one.
         text = raw_result[0] if isinstance(raw_result[0], str) else raw_result[0].get("text", "{}")
         return json.loads(text)
     return raw_result
@@ -103,6 +117,8 @@ if "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 if "user_info" not in st.session_state:
     st.session_state.user_info = None
+if "mcp_client" not in st.session_state:
+    st.session_state.mcp_client = None
 
 # 2. Render Login Screen if not authenticated
 if st.session_state.auth_token is None:
@@ -129,7 +145,7 @@ if st.session_state.auth_token is None:
                         # Send POST request to your auth endpoint
                         response = requests.post(
                             f"{API_BASE_URL}/User/Login", 
-                            json=login_data, # Use data=login_data if your API expects form-encoded fields
+                            json=login_data,
                             timeout=50
                         )
                     
@@ -165,9 +181,9 @@ else:
     if st.sidebar.button("Log Out"):
         st.session_state.auth_token = None
         st.session_state.user_info = None
+        st.session_state.mcp_client = None
         st.rerun()
 
-    st.set_page_config(page_title="Financial Analyst MCP", page_icon="🛒", layout="wide")
     st.title("🛒 Agente asesor financiero: Streamlit como cliente MCP")
     st.caption("La UI consume el MCP del agente; el agente consume el MCP de datos.")
     
@@ -196,8 +212,7 @@ else:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    prompt = st.chat_input("Ej.: Dime mis gastos de este mes.")
-    if prompt:
+    if prompt := st.chat_input("Ej.: Dime mis gastos de este mes."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -247,22 +262,4 @@ else:
         with right:
             st.subheader("Traza de orquestación")
             st.json(result["traza"])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
