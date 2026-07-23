@@ -9,9 +9,11 @@ Es un cliente que consume mcp_agente.py por HTTP y hace visible:
 - las herramientas invocadas.
 """
 from __future__ import annotations
+import concurrent.futures
 import asyncio
 import json
 import os
+import traceback
 import uuid
 import streamlit as st
 import requests
@@ -28,7 +30,8 @@ async def llamar_agente(mensaje: str) -> dict:
         headers = {"Authorization": f"Bearer {st.session_state.auth_token}"}
     else:
         headers = None
-    client = MultiServerMCPClient(
+
+    async with MultiServerMCPClient(
         {
             "agente": {
                 "transport": "http", 
@@ -36,15 +39,15 @@ async def llamar_agente(mensaje: str) -> dict:
                 "headers": headers,
             }
         }
-    )
-    tools = await client.get_tools()
-    tool_by_name = {tool.name: tool for tool in tools}
-    tool = tool_by_name["resolver_consulta_financiera"]
-    raw_result = await tool.ainvoke({
-        "mensaje": mensaje,
-        "session_id": st.session_state.session_id,
-        "canal": "streamlit",
-    })
+    ) as client:
+        tools = await client.get_tools()
+        tool_by_name = {tool.name: tool for tool in tools}
+        tool = tool_by_name["resolver_consulta_financiera"]
+        raw_result = await tool.ainvoke({
+            "mensaje": mensaje,
+            "session_id": st.session_state.session_id,
+            "canal": "streamlit",
+        })
     # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.
     if isinstance(raw_result, str):
         return json.loads(raw_result)
@@ -53,6 +56,21 @@ async def llamar_agente(mensaje: str) -> dict:
         text = raw_result[0] if isinstance(raw_result[0], str) else raw_result[0].get("text", "{}")
         return json.loads(text)
     return raw_result
+
+
+def run_async(coroutine):
+    """Run an async coroutine compatible with Streamlit's environment."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Streamlit Community Cloud already has a running loop; use a new thread.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coroutine).result()
+    else:
+        return asyncio.run(coroutine)
 
 
 # 1. Initialize session state variables
@@ -162,17 +180,34 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("El cliente MCP consulta al agente..."):
                 try:
-                    result = asyncio.run(llamar_agente(prompt))
+                    result = run_async(llamar_agente(prompt))
                     answer = result["respuesta"]
                     st.markdown(answer)
                     st.session_state.last_result = result
                     st.session_state.messages.append({"role": "assistant", "content": answer})
-                except Exception as exc:
-                    st.error(f"No fue posible consultar el agente: {exc}")
-                    st.info(
-                        "Verifica que estén activos mcp_datos.py (puerto 8000) "
-                        "y mcp_agente.py en modo HTTP (puerto 8001)."
+                except json.JSONDecodeError as exc:
+                    st.error(f"El agente respondió con un formato inesperado (no es JSON válido): {exc}")
+                    st.code(traceback.format_exc(), language="python")
+                except KeyError as exc:
+                    st.error(f"La respuesta del agente no contiene el campo esperado: {exc}")
+                    st.code(traceback.format_exc(), language="python")
+                except requests.exceptions.ConnectionError as exc:
+                    st.error("No se pudo conectar al servidor MCP del agente. ¿Está corriendo mcp_agente.py?")
+                    st.code(traceback.format_exc(), language="python")
+                except requests.exceptions.Timeout as exc:
+                    st.error("La solicitud al agente excedió el tiempo de espera.")
+                    st.code(traceback.format_exc(), language="python")
+                except BaseException as exc:
+                    # Unwrap ExceptionGroup / TaskGroup errors to show the real cause
+                    real_exc = exc
+                    if isinstance(exc, BaseExceptionGroup):
+                        sub_exceptions = exc.exceptions
+                        if sub_exceptions:
+                            real_exc = sub_exceptions[0]
+                    st.error(
+                        f"Error al consultar el agente: {type(real_exc).__name__}: {real_exc}"
                     )
+                    st.code(traceback.format_exc(), language="python")
 
     if st.session_state.last_result:
         result = st.session_state.last_result
