@@ -57,7 +57,7 @@ async def llamar_agente(mensaje: str) -> dict:
         headers = None
 
     last_error: BaseException | None = None
-    for retry in range(1, MCP_CONNECT_MAX_INTENTOS + 1):
+    for retry in range(1, MCP_CONNECT_MAX_RETRIES + 1):
         try:
             client = MultiServerMCPClient(
                 {
