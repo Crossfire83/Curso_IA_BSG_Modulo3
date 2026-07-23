@@ -46,6 +46,8 @@ async def llamar_agente(mensaje: str) -> dict:
         "mensaje": mensaje,
         "session_id": st.session_state.session_id,
         "canal": "streamlit",
+        "timeout": 300,
+        "sse_read_timeout": 300,
     })
 
     # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.

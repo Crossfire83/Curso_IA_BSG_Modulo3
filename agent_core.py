@@ -85,6 +85,8 @@ async def construir_agente(ctx: Context):
                 "transport": "http", 
                 "url": DATA_MCP_URL,
                 "headers": { "Authorization": f"{auth_header}"} if auth_header else None,
+                "timeout": 300,
+                "sse_read_timeout": 300,
             }
         }
     )
