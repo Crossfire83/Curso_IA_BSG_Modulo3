@@ -19,7 +19,9 @@ from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 load_dotenv(override=True)
-AGENT_MCP_URL = os.getenv("AGENT_MCP_URL", "http://127.0.0.1:8001/mcp")
+AGENT_MCP_URL = os.getenv("AGENT_MCP_URL") or st.secrets.get("AGENT_MCP_URL", "http://127.0.0.1:8001/mcp")
+# Base URL of your backend authentication API
+API_BASE_URL = os.getenv("API_BASE_URL") or st.secrets.get("API_BASE_URL")
 
 async def llamar_agente(mensaje: str) -> dict:
     if st.session_state.auth_token:
@@ -58,9 +60,6 @@ if "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 if "user_info" not in st.session_state:
     st.session_state.user_info = None
-
-# Base URL of your backend authentication API
-API_BASE_URL = os.getenv("API_BASE_URL")
 
 # 2. Render Login Screen if not authenticated
 if st.session_state.auth_token is None:
