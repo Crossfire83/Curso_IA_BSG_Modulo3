@@ -47,8 +47,9 @@ async def resolver_consulta_financiera(
     return await resolver_consulta(mensaje, session_id=session_id, canal=canal, ctx=ctx)
 
 if __name__ == "__main__":
+    PORT = int(os.getenv("PORT_AGENTE", "8001"))
     transport = os.getenv("MCP_AGENT_TRANSPORT", "http").lower()
     if transport == "http":
-        mcp.run(transport="http", host="127.0.0.1", port=8001)
+        mcp.run(transport="http", host="0.0.0.0", port=PORT)
     else:
         mcp.run()
