@@ -9,7 +9,6 @@ Es un cliente que consume mcp_agente.py por HTTP y hace visible:
 - las herramientas invocadas.
 """
 from __future__ import annotations
-import concurrent.futures
 import asyncio
 import json
 import os
@@ -57,22 +56,6 @@ async def llamar_agente(mensaje: str) -> dict:
         text = raw_result[0] if isinstance(raw_result[0], str) else raw_result[0].get("text", "{}")
         return json.loads(text)
     return raw_result
-
-
-def run_async(coroutine):
-    """Run an async coroutine compatible with Streamlit's environment."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # Streamlit Community Cloud already has a running loop; use a new thread.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, coroutine).result()
-    else:
-        return asyncio.run(coroutine)
-
 
 # 1. Initialize session state variables
 if "auth_token" not in st.session_state:
@@ -181,7 +164,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("El cliente MCP consulta al agente..."):
                 try:
-                    result = run_async(llamar_agente(prompt))
+                    result = asyncio.run(llamar_agente(prompt))
                     answer = result["respuesta"]
                     st.markdown(answer)
                     st.session_state.last_result = result
