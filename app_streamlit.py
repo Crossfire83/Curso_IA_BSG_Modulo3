@@ -46,8 +46,6 @@ async def llamar_agente(mensaje: str) -> dict:
         "mensaje": mensaje,
         "session_id": st.session_state.session_id,
         "canal": "streamlit",
-        "timeout": 300,
-        "sse_read_timeout": 300,
     })
 
     # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.
@@ -157,7 +155,7 @@ else:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    prompt = st.chat_input("Ej.: Busca clientes Premium y analiza al de mayor gasto.")
+    prompt = st.chat_input("Ej.: Dime mis gastos de este mes.")
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):

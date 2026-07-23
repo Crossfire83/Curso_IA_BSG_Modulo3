@@ -27,6 +27,7 @@ mcp = FastMCP(
         "Servidor MCP de analítica de finanzas personales de solo lectura. Usa herramientas "
         "específicas para analizar transacciones, categorias y analiticas."
     ),
+    stateless_http=True,
 )
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")

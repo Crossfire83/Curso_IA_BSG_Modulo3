@@ -27,6 +27,7 @@ mcp = FastMCP(
         "Este servidor expone un agente analista de finanzas personales. "
         "Puede consultar transacciones de clientes, categorias y analiticas."
     ),
+    stateless_http=True,
 )
 
 @mcp.tool()
