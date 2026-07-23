@@ -16,13 +16,39 @@ import traceback
 import uuid
 import streamlit as st
 import requests
+import httpx
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from mcp.shared.exceptions import McpError
 
 load_dotenv(override=True)
 AGENT_MCP_URL = os.getenv("AGENT_MCP_URL") or st.secrets.get("AGENT_MCP_URL", "http://127.0.0.1:8001/mcp")
 # Base URL of your backend authentication API
 API_BASE_URL = os.getenv("API_BASE_URL") or st.secrets.get("API_BASE_URL")
+
+# Reintentos para absorber "cold starts" del servidor MCP remoto (p.ej. Railway
+# despertando un servicio dormido). Este tipo de fallo no ocurre en local porque
+# los procesos MCP corren siempre activos, pero sí en despliegues con sleep/idle.
+MCP_CONNECT_MAX_RETRIES = 3
+MCP_CONNECT_AWAIT_BASE_SECONDS = 2
+
+def _is_mcp_transient_error(exc: BaseException) -> bool:
+    """
+    Detects transient MCP connection/initialization errors that justify a restart
+    (e.g. "Session terminated" by 404 during a cold restart
+    or timeouts/connection refused while the remote service wakes up).
+    The ExceptionGroup from asyncio/anyio are traversed recursively.
+    """
+    pending = [exc]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, McpError):
+            return True
+        if isinstance(current, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.RemoteProtocolError)):
+            return True
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+    return False
 
 async def llamar_agente(mensaje: str) -> dict:
     if st.session_state.auth_token:
@@ -30,23 +56,38 @@ async def llamar_agente(mensaje: str) -> dict:
     else:
         headers = None
 
-    client = MultiServerMCPClient(
-        {
-            "agente": {
-                "transport": "http", 
-                "url": AGENT_MCP_URL,
-                "headers": headers,
-            }
-        }
-    )
-    tools = await client.get_tools()
-    tool_by_name = {tool.name: tool for tool in tools}
-    tool = tool_by_name["resolver_consulta_financiera"]
-    raw_result = await tool.ainvoke({
-        "mensaje": mensaje,
-        "session_id": st.session_state.session_id,
-        "canal": "streamlit",
-    })
+    last_error: BaseException | None = None
+    for retry in range(1, MCP_CONNECT_MAX_INTENTOS + 1):
+        try:
+            client = MultiServerMCPClient(
+                {
+                    "agente": {
+                        "transport": "http",
+                        "url": AGENT_MCP_URL,
+                        "headers": headers,
+                        "timeout": 60,
+                        "sse_read_timeout": 300,
+                    }
+                }
+            )
+            tools = await client.get_tools()
+            tool_by_name = {tool.name: tool for tool in tools}
+            tool = tool_by_name["resolver_consulta_financiera"]
+            raw_result = await tool.ainvoke({
+                "mensaje": mensaje,
+                "session_id": st.session_state.session_id,
+                "canal": "streamlit",
+            })
+            break
+        except BaseException as exc:
+            last_error = exc
+            if retry < MCP_CONNECT_MAX_RETRIES and _is_mcp_transient_error(exc):
+                await asyncio.sleep(MCP_CONNECT_AWAIT_BASE_SECONDS * retry)
+                continue
+            raise
+    else:
+        # No debería alcanzarse: o hubo break, o se re-lanzó el error.
+        raise last_error  # type: ignore[misc]
 
     # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.
     if isinstance(raw_result, str):
