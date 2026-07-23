@@ -31,7 +31,7 @@ async def llamar_agente(mensaje: str) -> dict:
     else:
         headers = None
 
-    async with MultiServerMCPClient(
+    client = MultiServerMCPClient(
         {
             "agente": {
                 "transport": "http", 
@@ -39,15 +39,16 @@ async def llamar_agente(mensaje: str) -> dict:
                 "headers": headers,
             }
         }
-    ) as client:
-        tools = await client.get_tools()
-        tool_by_name = {tool.name: tool for tool in tools}
-        tool = tool_by_name["resolver_consulta_financiera"]
-        raw_result = await tool.ainvoke({
-            "mensaje": mensaje,
-            "session_id": st.session_state.session_id,
-            "canal": "streamlit",
-        })
+    )
+    tools = await client.get_tools()
+    tool_by_name = {tool.name: tool for tool in tools}
+    tool = tool_by_name["resolver_consulta_financiera"]
+    raw_result = await tool.ainvoke({
+        "mensaje": mensaje,
+        "session_id": st.session_state.session_id,
+        "canal": "streamlit",
+    })
+
     # El resultado de tool.ainvoke() es un string JSON; lo parseamos a dict.
     if isinstance(raw_result, str):
         return json.loads(raw_result)
