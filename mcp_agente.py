@@ -27,7 +27,6 @@ mcp = FastMCP(
         "Este servidor expone un agente analista de finanzas personales. "
         "Puede consultar transacciones de clientes, categorias y analiticas."
     ),
-    stateless_http=True,
 )
 
 @mcp.tool()
@@ -51,6 +50,6 @@ if __name__ == "__main__":
     PORT = int(os.getenv("PORT_AGENTE", "8001"))
     transport = os.getenv("MCP_AGENT_TRANSPORT", "http").lower()
     if transport == "http":
-        mcp.run(transport="http", host="0.0.0.0", port=PORT)
+        mcp.run(transport="http", host="0.0.0.0", port=PORT, stateless_http=True)
     else:
         mcp.run()

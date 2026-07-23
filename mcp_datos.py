@@ -27,7 +27,6 @@ mcp = FastMCP(
         "Servidor MCP de analítica de finanzas personales de solo lectura. Usa herramientas "
         "específicas para analizar transacciones, categorias y analiticas."
     ),
-    stateless_http=True,
 )
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")
@@ -243,4 +242,4 @@ def obtener_fecha_actual() -> str:
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT_DATOS", "8000"))
-    mcp.run(transport="http", host="0.0.0.0", port=PORT)
+    mcp.run(transport="http", host="0.0.0.0", port=PORT, stateless_http=True)
