@@ -43,6 +43,7 @@ API_CATEGORY_ANALYTICS_PATH = os.environ.get(
     "API_CATEGORY_ANALYTICS_PATH",
     "Categories/Analytics",
 )
+
 def is_valid_date(date_string: str) -> bool:
     VALID_DATE_REGEX = re.compile(r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
     # 1. Quick regex structure check
@@ -56,18 +57,16 @@ def is_valid_date(date_string: str) -> bool:
     except ValueError:
         return False
 
-# -----------------------------------------------------------------------------
-# CONECTOR API REST: helper interno, no es una tool MCP.
-# -----------------------------------------------------------------------------
 def llamar_api(
-        metodo_http: str, 
-        ruta: str,
+        http_method: str, 
+        url: str,
         ctx: Context,
-        parametros: dict | None = None,
-        cuerpo_peticion: dict | None = None,
+        parameters: dict | None = None,
+        request_body: dict | None = None,
         ) -> dict:
     """
-    Llama una ruta GET previamente definida por el desarrollador.
+    CONECTOR API REST: helper interno, no es una tool MCP.
+    Llama una ruta de una API previamente definida por el desarrollador.
     El LLM no controla URL base, headers ni token.
     """
     headers = {
@@ -82,12 +81,12 @@ def llamar_api(
 
     try:
         response = requests.request(
-            method=metodo_http,
-            url=f"{API_BASE_URL}/{ruta.lstrip('/')}",
-            params=parametros or {},
+            method=http_method,
+            url=f"{API_BASE_URL}/{url.lstrip('/')}",
+            params=parameters or {},
             headers=headers,
             timeout=API_TIMEOUT,
-            json=cuerpo_peticion if metodo_http in ("POST", "PUT", "PATCH") else None,
+            json=request_body if http_method in ("POST", "PUT", "PATCH") else None,
         )
         response.raise_for_status()
         return response.json()
@@ -102,7 +101,8 @@ def llamar_api(
     except requests.RequestException as exc:
         return {"error": "No fue posible conectar con la API.", "detail": str(exc)}
 
-
+# region cleaning methods
+@staticmethod
 def _limpiar_respuesta_transacciones(respuesta: dict) -> dict:
     """
     Remueve del cuerpo de respuesta los atributos que no deben llegar al LLM
@@ -114,21 +114,73 @@ def _limpiar_respuesta_transacciones(respuesta: dict) -> dict:
     CATEGORY_KEYS_TO_REMOVE = {"categoryId", "userId", "icon", "color"}
     TRANSACTION_KEYS_TO_REMOVE = {"id", "category"}
 
-    for categoria in respuesta["categories"]:
-        if not isinstance(categoria, dict):
+    for category in respuesta["categories"]:
+        if not isinstance(category, dict):
             continue
 
         for key in CATEGORY_KEYS_TO_REMOVE:
-            categoria.pop(key, None)
+            category.pop(key, None)
 
-        for transaccion in categoria.get("childrenTransactions", []) or []:
-            if not isinstance(transaccion, dict):
+        for transaction in category.get("childrenTransactions", []) or []:
+            if not isinstance(transaction, dict):
                 continue
             for key in TRANSACTION_KEYS_TO_REMOVE:
-                transaccion.pop(key, None)
+                transaction.pop(key, None)
 
     return respuesta
 
+@staticmethod
+def _limpiar_respuesta_categorias(respuesta: list) -> list:
+    """
+    Remueve del cuerpo de respuesta los atributos que no deben llegar al LLM
+    (identificadores internos y detalles visuales sin valor analitico).
+    """
+    if not isinstance(respuesta, list):
+        return respuesta
+
+    CATEGORY_KEYS_TO_REMOVE = {
+        "categoryId",
+        "overrideId",
+        "icon",
+        "color",
+        "hidden",
+        "templateCategoryId",
+    }
+
+    for category in respuesta:
+        if not isinstance(category, dict):
+            continue
+        for key in CATEGORY_KEYS_TO_REMOVE:
+            category.pop(key, None)
+
+    return respuesta
+
+@staticmethod
+def _limpiar_respuesta_analitica_categorias(respuesta: list) -> list:
+    """
+    Remueve del cuerpo de respuesta los atributos que no deben llegar al LLM
+    (identificadores internos y detalles visuales sin valor analitico).
+    """
+    if not isinstance(respuesta, list):
+        return respuesta
+
+    CATEGORY_KEYS_TO_REMOVE = {
+        "categoryId",
+        "overrideId",
+        "icon",
+        "color",
+        "hidden",
+        "templateCategoryId",
+    }
+
+    for category in respuesta:
+        if not isinstance(category, dict):
+            continue
+        for key in CATEGORY_KEYS_TO_REMOVE:
+            category.pop(key, None)
+
+    return respuesta
+# endregion
 
 @mcp.tool()
 def obtener_transacciones(
@@ -155,7 +207,7 @@ def obtener_transacciones(
         - La API key no se expone al modelo.
         - Normaliza la respuesta antes de entregarla al LLM.
     """
-    ruta = API_TRANSACTIONS_PATH
+    url = API_TRANSACTIONS_PATH
 
     body = {}
     if from_date:
@@ -170,9 +222,9 @@ def obtener_transacciones(
             raise ValueError("Fecha inválida en to_date.")
 
     respuesta = llamar_api(
-        metodo_http="POST",
-        ruta=ruta,
-        cuerpo_peticion=body,
+        http_method="POST",
+        url=url,
+        request_body=body,
         ctx=ctx,
     )
 
@@ -194,13 +246,15 @@ def obtener_categorias(ctx: Context) -> str:
         - La API key no se expone al modelo.
         - Normaliza la respuesta antes de entregarla al LLM.
     """
-    ruta = API_CATEGORIES_PATH
+    url = API_CATEGORIES_PATH
 
     respuesta = llamar_api(
-        metodo_http="GET",
-        ruta=ruta,
+        http_method="GET",
+        url=url,
         ctx=ctx,
     )
+
+    respuesta = _limpiar_respuesta_categorias(respuesta)
 
     return json.dumps(respuesta, ensure_ascii=False)
 
@@ -218,6 +272,7 @@ def obtener_analitica_categorias(
         - "Cual fue mi categoria de mayor gasto?"
         - "Cuales son mis categorias de mayor gasto?"
         - "Cual fue mi categoria de mayor ingreso?"
+        - "Dame mi analisis de gasots de este mes."
 
     Args:
         from_date: fecha de inicio de periodo en formato yyyy-MM-dd (opcional).
@@ -228,7 +283,7 @@ def obtener_analitica_categorias(
         - La API key no se expone al modelo.
         - Normaliza la respuesta antes de entregarla al LLM.
     """
-    ruta = API_CATEGORY_ANALYTICS_PATH
+    url = API_CATEGORY_ANALYTICS_PATH
 
     query_params = {}
     if from_date:
@@ -243,11 +298,13 @@ def obtener_analitica_categorias(
             raise ValueError("Fecha inválida en to_date.")
 
     respuesta = llamar_api(
-        metodo_http="GET",
-        ruta=ruta,
-        parametros=query_params,
+        http_method="GET",
+        url=url,
+        parameters=query_params,
         ctx=ctx,
     )
+
+    respuesta = _limpiar_respuesta_analitica_categorias(respuesta)
 
     return json.dumps(respuesta, ensure_ascii=False)
 
