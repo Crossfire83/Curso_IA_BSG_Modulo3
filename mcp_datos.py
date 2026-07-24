@@ -103,6 +103,33 @@ def llamar_api(
         return {"error": "No fue posible conectar con la API.", "detail": str(exc)}
 
 
+def _limpiar_respuesta_transacciones(respuesta: dict) -> dict:
+    """
+    Remueve del cuerpo de respuesta los atributos que no deben llegar al LLM
+    (identificadores internos y detalles visuales sin valor analitico).
+    """
+    if "categories" not in respuesta or not isinstance(respuesta.get("categories"), list):
+        return respuesta
+
+    CATEGORY_KEYS_TO_REMOVE = {"categoryId", "userId", "icon", "color"}
+    TRANSACTION_KEYS_TO_REMOVE = {"id", "category"}
+
+    for categoria in respuesta["categories"]:
+        if not isinstance(categoria, dict):
+            continue
+
+        for key in CATEGORY_KEYS_TO_REMOVE:
+            categoria.pop(key, None)
+
+        for transaccion in categoria.get("childrenTransactions", []) or []:
+            if not isinstance(transaccion, dict):
+                continue
+            for key in TRANSACTION_KEYS_TO_REMOVE:
+                transaccion.pop(key, None)
+
+    return respuesta
+
+
 @mcp.tool()
 def obtener_transacciones(
         ctx: Context,
@@ -148,6 +175,8 @@ def obtener_transacciones(
         cuerpo_peticion=body,
         ctx=ctx,
     )
+
+    respuesta = _limpiar_respuesta_transacciones(respuesta)
 
     return json.dumps(respuesta, ensure_ascii=False)
 
