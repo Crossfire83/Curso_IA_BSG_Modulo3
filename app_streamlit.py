@@ -81,7 +81,7 @@ async def llamar_agente(mensaje: str) -> dict:
     last_error: BaseException | None = None
     for retry in range(1, MCP_CONNECT_MAX_RETRIES + 1):
         try:
-            client = get_persistent_mcp_client(headers)
+            client = await get_persistent_mcp_client(headers)
             tools = await client.get_tools()
             tool_by_name = {tool.name: tool for tool in tools}
             tool = tool_by_name["resolver_consulta_financiera"]
